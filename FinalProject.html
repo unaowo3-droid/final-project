@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>即時互動氣泡留言牆</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+body {
+  margin: 0;
+  font-family: "Segoe UI", sans-serif;
+  background: linear-gradient(135deg, #dbeafe, #eff6ff);
+  overflow: hidden;
+}
+
+#wall {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.bubble {
+  position: absolute;
+  padding: 10px 16px;
+  border-radius: 20px;
+  box-shadow: 0 4px 10px rgba(0,0,0,.15);
+  white-space: nowrap;
+  animation: float linear forwards;
+  font-size: 16px;
+}
+
+@keyframes float {
+  from { transform: translateX(100vw); }
+  to   { transform: translateX(-120%); }
+}
+
+#inputBar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(255,255,255,.95);
+  display: flex;
+  gap: 8px;
+  padding: 10px;
+}
+
+#msg {
+  flex: 1;
+  padding: 10px;
+  font-size: 16px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+}
+
+button {
+  padding: 10px 16px;
+  font-size: 16px;
+  border: none;
+  border-radius: 8px;
+  background: #3b82f6;
+  color: white;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #2563eb;
+}
+</style>
+</head>
+
+<body>
+
+<div id="wall"></div>
+
+<div id="inputBar">
+  <input id="nickname" placeholder="暱稱" style="width:80px">
+  <input id="color" type="color" value="#3b82f6">
+  <input id="msg" placeholder="輸入留言…" maxlength="40">
+  <button onclick="sendMsg()">送出</button>
+</div>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+<script>
+// 🔴 改成你自己的 Firebase 設定
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  databaseURL: "https://YOUR_PROJECT.firebaseio.com",
+  projectId: "YOUR_PROJECT",
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const wall = document.getElementById("wall");
+
+function random(min, max) {
+  return Math.random() * (max - min) + min;
+}
+
+// 建立主彈幕
+function createBubble(id, text, nick, color, likes) {
+  const b = document.createElement("div");
+  b.className = "bubble";
+  b.style.background = color + "cc";
+  b.style.top = random(20, window.innerHeight - 160) + "px";
+  b.style.animationDuration = random(8, 14) + "s";
+
+  b.innerHTML = `
+    <strong>${nick}</strong>: ${text}
+    <span style="cursor:pointer; margin-left:6px">
+      ❤️ ${likes || 0}
+    </span>
+  `;
+
+  // 按讚
+  b.querySelector("span").onclick = () => {
+    db.ref("messages/" + id + "/likes")
+      .transaction(l => (l || 0) + 1);
+  };
+
+  wall.appendChild(b);
+
+  // 動畫結束 → 移除 → 1 秒後生成背景彈幕
+  b.addEventListener("animationend", () => {
+    b.remove();
+    setTimeout(() => spawnBackgroundBubble(text, color), 1000);
+  });
+}
+
+// 背景彈幕
+function spawnBackgroundBubble(text, color) {
+  const bg = document.createElement("div");
+  bg.className = "bubble";
+  bg.textContent = text;
+  bg.style.background = color + "55";
+  bg.style.bottom = random(10, 80) + "px";
+  bg.style.top = "auto";
+  bg.style.animationDuration = random(10, 18) + "s";
+
+  wall.appendChild(bg);
+  bg.addEventListener("animationend", () => bg.remove());
+}
+
+// 送出留言
+function sendMsg() {
+  const text = msg.value.trim();
+  const nick = nickname.value.trim() || "匿名";
+  const color = document.getElementById("color").value;
+  if (!text) return;
+
+  db.ref("messages").push({
+    text,
+    nick,
+    color,
+    likes: 0,
+    time: Date.now()
+  });
+
+  msg.value = "";
+}
+
+// 即時監聽所有使用者留言
+db.ref("messages").limitToLast(50).on("child_added", snap => {
+  const d = snap.val();
+  if (d) {
+    createBubble(snap.key, d.text, d.nick, d.color, d.likes);
+  }
+});
+</script>
+
+</body>
+</html>
